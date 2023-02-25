@@ -1,0 +1,12 @@
+[
+  {
+    "websiteId": 1,
+    "websiteUrl": "https://books.toscrape.com/",
+    "isFetched": "false"
+  },
+  {
+    "websiteId": 2,
+    "websiteUrl": "https://www.amazon.com/books-used-books-textbooks/b?ie=UTF8&node=283155",
+    "isFetched": "false"
+  }
+]

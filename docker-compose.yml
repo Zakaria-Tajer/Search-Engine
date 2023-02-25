@@ -1,0 +1,21 @@
+version: "3.8"
+
+
+services:
+  elasticsearch:
+    container_name: elastic-search-engine
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.6.1
+    ports:
+      - 9200:9200
+    restart: always
+    environment:
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+    volumes:
+      - elastic-search-engine-data-volume:/usr/share/elasticsearch/data
+
+
+volumes:
+  data: {}
+  elastic-search-engine-data-volume:
+    driver: local
