@@ -1,8 +1,10 @@
 package com.frontier.url.services.crawler;
 
 
+import com.frontier.url.repository.WebsiteRepository;
 import com.frontier.url.services.seeder.SeederServiceImp;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -13,16 +15,15 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class Crawler {
 
     private final SeederServiceImp seederService;
 
-//    public void
-
+    private final WebsiteRepository websiteRepository;
 
     public HashMap<Integer, String> urlsQueues() throws IOException {
 
@@ -42,114 +43,95 @@ public class Crawler {
             try {
                 connection = Jsoup.connect(urlsQueues().get(attempts));
 
-                System.out.println(" got it:  " + urlsQueues().get(attempts));
-                connection.get();
+                log.info("connecting to: " + urlsQueues().get(attempts));
 
+                connection.get();
 
                 if (connection.response().statusCode() == 200) {
 
                     docsList.add(connection.get());
                 } else {
-                    establishSearchers(connection.get().location(), connection.get(), urlsQueues().get(attempts));
-                    System.out.println("nooop");
+                    log.info("connection lost with: " + connection.get().location());
+                    return null;
                 }
 
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
 
-//            System.out.println(attempts);
         }
 
 
         return docsList;
     }
 
-    public CompletableFuture<List<List<Document>>> getDocuments(String keyword) throws IOException {
+    public void getDocuments(String keyword) throws IOException {
+
         List<CompletableFuture<List<Document>>> fetchedDocs = new ArrayList<>();
+        List<CompletableFuture<List<Document>>> documentFutures = new ArrayList<>();
 
-        CompletableFuture<Void> allDocsFetched = CompletableFuture.runAsync(() -> {
-            try {
-                List<CompletableFuture<List<Document>>> docsFutures = new ArrayList<>();
-                for (int i = 0; i < establisheConnection().size(); i++) {
-                    CompletableFuture<List<Document>> docFuture = CompletableFuture.supplyAsync(() -> {
-                        try {
-                            List<Document> docs = establisheConnection(); // fetchDocs() returns a list of documents
-                            return docs;
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
-                    docsFutures.add(docFuture);
+        List<Document> getterDoc = new ArrayList<>();
+
+        for (int i = 0; i < establisheConnection().size(); i++) {
+            CompletableFuture<List<Document>> future = CompletableFuture.supplyAsync(() -> {
+
+                try {
+                    return establisheConnection();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
                 }
-                CompletableFuture.allOf(docsFutures.toArray(new CompletableFuture[0])).join();
-                // merge all the lists of documents into a single list
-                List<Document> allDocuments = docsFutures.stream()
-                        .map(CompletableFuture::join)
-                        .flatMap(List::stream)
-                        .collect(Collectors.toList());
-                fetchedDocs.add(CompletableFuture.completedFuture(allDocuments));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
 
-        allDocsFetched.join();
-        // return a future that completes with the list of documents
-        return CompletableFuture.allOf(fetchedDocs.toArray(new CompletableFuture[0]))
-                .thenApply(v -> fetchedDocs.stream()
-                        .map(CompletableFuture::join)
-                        .collect(Collectors.toList()))
-                .thenApply(docs -> {
-                    // perform search on the list of documents
+            });
+            documentFutures.add(future);
+        }
 
+        CompletableFuture.allOf(documentFutures.toArray(new CompletableFuture[0])).join();
+        log.info("Done fetching all documents");
 
-                    CompletableFuture<Boolean> isFound = searchForKeyword(docs, keyword);
-                    System.out.println("isFound: " + isFound);
-                    isFound.thenApply(result -> {
-                        if (result) {
-                            System.out.println(result + " Success");
-                            return "Success";
-                        } else {
-                            System.out.println(result + " Failure");
+        List<Document> documents = new ArrayList<>();
+        for (CompletableFuture<List<Document>> documentFuture : documentFutures) {
+            List<Document> documentList = documentFuture.join();
+            documents.addAll(documentList);
 
-                            return "Failure";
-                        }
-                    });
-                    return docs;
-                });
+        }
+
+        searchForKeyword(documents, keyword);
+
     }
 
-    public CompletableFuture<Boolean> searchForKeyword(List<List<Document>> future, String keyword) {
-        CompletableFuture<Boolean> result = CompletableFuture.supplyAsync(() -> {
-//
+    public CompletableFuture<Boolean> searchForKeyword(List<Document> future, String keyword) {
+
+        return CompletableFuture.supplyAsync(() -> {
             boolean found = false;
-            for (List<Document> docs : future) {
+            for (Document document : future) {
+                Elements links = document.select("a[href]");
+                for (Element link : links) {
+                    String linkHref = link.attr("href");
+                    String linkText = link.text();
+                    if (linkHref.contains(keyword) || linkText.contains(keyword)) {
+                        System.out.println("Keyword found in link: " + linkHref);
+                        found = true;
+                    } else {
+                        // Todo: If Not found in link, get the location,
+                        //  and search for the keyword with the method establishSearchers();
 
-                for (Document doc : docs) {
-
-                        Elements links = doc.select("a[href]");
-                        for (Element element : links) {
-                            String linkHref = element.attr("href");
-                            String linkText = element.text();
-
-                            if (linkText.contains(keyword) || linkHref.contains(keyword)) {
-                                System.out.println("url: " + doc.location() + linkHref);
-                                found = true;
-                            }
-                        }
-                        return true;
-
+                        System.out.println(link.attr("href").contains("/**/"));
+                    }
+                }
+                if (document.text().contains(keyword)) {
+                    System.out.println("Keyword found in document: " + document.location());
+                    found = true;
+                } else {
+                    System.out.println("Keyword not found in document: " + document.location());
+                    found = false;
                 }
             }
             if (!found) {
-                System.out.println("Did not find keyword '" + keyword + "' in website");
+                System.out.println("Keyword not found in any document");
             }
             return found;
 
         });
-
-        return result;
 
 
     }
@@ -161,17 +143,6 @@ public class Crawler {
         Elements elements = document.getElementsContainingText(wordSearchingFor);
 
         System.out.println(document.title());
-//        for (int i = 0; i < elements.size(); i++) {
-////            System.out.println(elements.get(i).text());
-//
-//            if(elements.get(i).text().contains(wordSearchingFor)){
-//                System.out.println(elements.get(i).text());
-//                break;
-//            }else {
-//                System.out.println("no");
-//                break;
-//            }
-//        }
 
 
     }
