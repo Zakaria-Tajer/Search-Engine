@@ -1,6 +1,8 @@
 package com.frontier.url.services.crawler;
 
 
+import com.frontier.url.domains.Websites;
+
 import com.frontier.url.repository.WebsiteRepository;
 import com.frontier.url.services.seeder.SeederServiceImp;
 import lombok.RequiredArgsConstructor;
@@ -36,9 +38,9 @@ public class Crawler {
         return hashMapOfUrls;
     }
 
-    public List<Document> establisheConnection() throws IOException {
+    public List<Document> establishesConnection() throws IOException {
         List<Document> docsList = new ArrayList<>();
-        Connection connection = null;
+        Connection connection;
         for (int attempts = 0; attempts < urlsQueues().size(); attempts++) {
             try {
                 connection = Jsoup.connect(urlsQueues().get(attempts));
@@ -67,16 +69,13 @@ public class Crawler {
 
     public void getDocuments(String keyword) throws IOException {
 
-        List<CompletableFuture<List<Document>>> fetchedDocs = new ArrayList<>();
         List<CompletableFuture<List<Document>>> documentFutures = new ArrayList<>();
 
-        List<Document> getterDoc = new ArrayList<>();
-
-        for (int i = 0; i < establisheConnection().size(); i++) {
+        for (int i = 0; i < establishesConnection().size(); i++) {
             CompletableFuture<List<Document>> future = CompletableFuture.supplyAsync(() -> {
 
                 try {
-                    return establisheConnection();
+                    return establishesConnection();
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -95,40 +94,68 @@ public class Crawler {
 
         }
 
-        searchForKeyword(documents, keyword);
+        CompletableFuture<Boolean> isSearching = searchForKeyword(documents, keyword);
+        log.info("documents searched [{}]", isSearching);
 
     }
 
-    public CompletableFuture<Boolean> searchForKeyword(List<Document> future, String keyword) {
+    public void saveDocuments(String urlFetched, String word) {
+        CompletableFuture.runAsync(() -> {
+            websiteRepository.save(
+                    new Websites(
+                            "",
+                            urlFetched,
+                            true,
+                            word
+                    )
+            );
+            log.warn("Keyword [{}] not found in any document needed to be saved", word);
+            log.info("New document saved");
 
+        });
+    }
+    public CompletableFuture<Boolean> searchForKeyword(List<Document> future, String keyword) {
         return CompletableFuture.supplyAsync(() -> {
             boolean found = false;
             for (Document document : future) {
                 Elements links = document.select("a[href]");
+                boolean foundInDocument = false; // flag to track if keyword is found in current document
                 for (Element link : links) {
                     String linkHref = link.attr("href");
                     String linkText = link.text();
                     if (linkHref.contains(keyword) || linkText.contains(keyword)) {
                         System.out.println("Keyword found in link: " + linkHref);
                         found = true;
-                    } else {
-                        // Todo: If Not found in link, get the location,
-                        //  and search for the keyword with the method establishSearchers();
-
-                        System.out.println(link.attr("href").contains("/**/"));
+                        foundInDocument = true;
+                        break;
                     }
+
                 }
                 if (document.text().contains(keyword)) {
                     System.out.println("Keyword found in document: " + document.location());
+                    foundInDocument = true;
                     found = true;
-                } else {
-                    System.out.println("Keyword not found in document: " + document.location());
-                    found = false;
+                }
+
+                if (!foundInDocument) {
+                    CompletableFuture.runAsync(() -> {
+                        Optional<Websites> checkSite =
+                                websiteRepository
+                                        .getWebsitesByWebsiteUrlAndAndKeywordSearchedFor(document.location(), keyword);
+
+                        if(checkSite.isEmpty()){
+                            saveDocuments(document.location(), keyword);
+                        }
+
+                        log.warn("Document with keyword=[{}] already saved in db", keyword);
+
+                    });
+
+                    // ! could potentially break the search [break]
+                    break;
                 }
             }
-            if (!found) {
-                System.out.println("Keyword not found in any document");
-            }
+
             return found;
 
         });
@@ -146,6 +173,7 @@ public class Crawler {
 
 
     }
+
 
 
 }

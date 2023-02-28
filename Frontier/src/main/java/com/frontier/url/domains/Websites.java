@@ -1,7 +1,6 @@
 package com.frontier.url.domains;
 
 
-import com.frontier.url.services.crawler.LinksCrawled;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
@@ -25,6 +24,5 @@ public class Websites {
     private boolean isFetched;
     @Field(type = FieldType.Text)
     private String keywordSearchedFor;
-    @Field(type = FieldType.Nested)
-    private List<LinksCrawled> crawledList;
+
 }

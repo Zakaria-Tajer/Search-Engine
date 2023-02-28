@@ -1,7 +1,9 @@
 package com.frontier.url.controllers;
 
 
+import com.frontier.url.domains.Websites;
 import com.frontier.url.dto.WebsitesDto;
+import com.frontier.url.repository.WebsiteRepository;
 import com.frontier.url.services.crawler.Crawler;
 import com.frontier.url.services.seeder.SeederServiceImp;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ public class SeederController {
 
     private final SeederServiceImp seederService;
     private final Crawler crawler;
+    private final WebsiteRepository repository;
 
     @GetMapping("/seederQueue")
     public void getWebsites() throws Exception {
@@ -29,4 +32,12 @@ public class SeederController {
 
     }
 
+    @GetMapping("/getData")
+    public Iterable<Websites> getData() throws Exception {
+
+
+        return repository.findAll();
+//        crawler.establisheConnection();
+
+    }
 }
